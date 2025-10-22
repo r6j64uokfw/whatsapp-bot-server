@@ -14,6 +14,28 @@ app.use(express.json());
 let latestQrDataUrl = null;
 let clientReady = false;
 
+// Funzione per aggiornare lo stato su Supabase
+async function updateStatusOnSupabase(status) {
+  try {
+    await fetch(`${process.env.SUPABASE_URL}/rest/v1/whatsapp_status`, {
+      method: "POST",
+      headers: {
+        apikey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates"
+      },
+      body: JSON.stringify({
+        status,
+        updated_at: new Date().toISOString()
+      }),
+    });
+    console.log(`✅ Stato '${status}' inviato a Supabase`);
+  } catch (err) {
+    console.error("❌ Errore invio stato a Supabase:", err);
+  }
+}
+
 // Create WhatsApp client
 const client = new Client({
   authStrategy: new LocalAuth({ clientId: "session-whatsapp" }),
@@ -45,12 +67,14 @@ client.on("qr", async (qr) => {
 client.on("ready", () => {
   clientReady = true;
   console.log("✅ WhatsApp pronto! Stato: connesso.");
+  updateStatusOnSupabase("connected");
 });
 
 // WhatsApp disconnected event
 client.on("disconnected", (reason) => {
   clientReady = false;
   console.log("⚠️ WhatsApp disconnesso! Motivo:", reason);
+  updateStatusOnSupabase("disconnected");
 });
 
 // Message received event
