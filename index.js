@@ -2,6 +2,7 @@ import express from "express";
 import dotenv from "dotenv";
 import fetch from "node-fetch";
 import pkg from "whatsapp-web.js";
+import QRCode from "qrcode"; // new dependency
 
 const { Client, LocalAuth } = pkg;
 
@@ -9,7 +10,11 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
-// ✅ Crea il client WhatsApp compatibile con Render
+// memory holder
+let latestQrDataUrl = null;
+let clientReady = false;
+
+// Create WhatsApp client
 const client = new Client({
   authStrategy: new LocalAuth({ clientId: "session-whatsapp" }),
   puppeteer: {
@@ -25,15 +30,24 @@ const client = new Client({
   },
 });
 
-// ✅ Evento quando WhatsApp è pronto
+client.on("qr", async (qr) => {
+  try {
+    latestQrDataUrl = await QRCode.toDataURL(qr);
+    console.log("📷 QR generato e salvato in memoria.");
+  } catch (err) {
+    console.error("❌ Errore generazione QR:", err);
+    latestQrDataUrl = null;
+  }
+});
+
 client.on("ready", () => {
+  clientReady = true;
   console.log("✅ WhatsApp pronto!");
 });
 
-// ✅ Evento per ricezione messaggi
+// persist received messages to Supabase (same as before)
 client.on("message", async (msg) => {
   console.log("📩 Messaggio ricevuto:", msg.body);
-
   try {
     await fetch(`${process.env.SUPABASE_URL}/rest/v1/messages`, {
       method: "POST",
@@ -54,30 +68,61 @@ client.on("message", async (msg) => {
   }
 });
 
-// ✅ Endpoint per inviare messaggi da Supabase → WhatsApp
+// helper: normalize phone -> JID
+function toJid(raw) {
+  if (!raw) return null;
+  if (raw.includes("@")) return raw;
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return null;
+  return `${digits}@c.us`;
+}
+
+// POST /send => send to WhatsApp
 app.post("/send", async (req, res) => {
   const { to, message } = req.body;
+
+  if (!clientReady) {
+    return res.status(503).json({ error: "WhatsApp client not ready" });
+  }
+  if (!to || !message) {
+    return res.status(400).json({ error: "Missing 'to' or 'message'" });
+  }
+
+  const jid = toJid(to);
+  if (!jid) {
+    return res.status(400).json({ error: "Invalid 'to' format" });
+  }
+
   try {
-    await client.sendMessage(to, message);
-    res.json({ success: true });
+    await client.sendMessage(jid, message);
+    return res.json({ success: true });
   } catch (err) {
     console.error("❌ Errore invio WhatsApp:", err);
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message || "send failed" });
   }
 });
 
-// ✅ Endpoint per lo stato
+// GET /status
 app.get("/status", (req, res) => {
-  const connected = !!client.info;
+  const connected = !!client.info && clientReady;
   res.json({
     connected,
     message: connected ? "WhatsApp connesso" : "WhatsApp non connesso",
   });
 });
 
-// ✅ Avvia server HTTP
+// GET /qr -> returns { qr: 'data:image/png;base64,...' } or 404
+app.get("/qr", (req, res) => {
+  if (latestQrDataUrl) {
+    return res.json({ qr: latestQrDataUrl });
+  } else {
+    return res.status(404).json({ message: "Nessun QR disponibile al momento" });
+  }
+});
+
+// start server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Server attivo su porta ${PORT}`));
 
-// ✅ Avvia client WhatsApp
+// initialize
 client.initialize();
