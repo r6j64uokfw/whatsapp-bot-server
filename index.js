@@ -10,6 +10,9 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
+console.log("SUPABASE_URL:", process.env.SUPABASE_URL);
+console.log("SUPABASE_SERVICE_ROLE_KEY:", process.env.SUPABASE_SERVICE_ROLE_KEY);
+
 // memory holder
 let latestQrDataUrl = null;
 let clientReady = false;
