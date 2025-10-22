@@ -2,7 +2,7 @@ import express from "express";
 import dotenv from "dotenv";
 import fetch from "node-fetch";
 import pkg from "whatsapp-web.js";
-import QRCode from "qrcode"; // new dependency
+import QRCode from "qrcode";
 
 const { Client, LocalAuth } = pkg;
 
@@ -30,6 +30,7 @@ const client = new Client({
   },
 });
 
+// QR code event
 client.on("qr", async (qr) => {
   try {
     latestQrDataUrl = await QRCode.toDataURL(qr);
@@ -40,16 +41,23 @@ client.on("qr", async (qr) => {
   }
 });
 
+// WhatsApp ready event
 client.on("ready", () => {
   clientReady = true;
-  console.log("✅ WhatsApp pronto!");
+  console.log("✅ WhatsApp pronto! Stato: connesso.");
 });
 
-// persist received messages to Supabase (same as before)
+// WhatsApp disconnected event
+client.on("disconnected", (reason) => {
+  clientReady = false;
+  console.log("⚠️ WhatsApp disconnesso! Motivo:", reason);
+});
+
+// Message received event
 client.on("message", async (msg) => {
   console.log("📩 Messaggio ricevuto:", msg.body);
   try {
-    await fetch(`${process.env.SUPABASE_URL}/rest/v1/messages`, {
+    const response = await fetch(`${process.env.SUPABASE_URL}/rest/v1/messages`, {
       method: "POST",
       headers: {
         apikey: process.env.SUPABASE_SERVICE_ROLE_KEY,
@@ -63,6 +71,7 @@ client.on("message", async (msg) => {
         status: "received",
       }),
     });
+    console.log("✅ Messaggio inviato a Supabase. Status:", response.status);
   } catch (err) {
     console.error("❌ Errore invio messaggio a Supabase:", err);
   }
@@ -80,21 +89,26 @@ function toJid(raw) {
 // POST /send => send to WhatsApp
 app.post("/send", async (req, res) => {
   const { to, message } = req.body;
+  console.log(`[API] Richiesta invio messaggio: to=${to}, message=${message}`);
 
   if (!clientReady) {
+    console.log("[API] Invio fallito: client non pronto.");
     return res.status(503).json({ error: "WhatsApp client not ready" });
   }
   if (!to || !message) {
+    console.log("[API] Invio fallito: parametri mancanti.");
     return res.status(400).json({ error: "Missing 'to' or 'message'" });
   }
 
   const jid = toJid(to);
   if (!jid) {
+    console.log("[API] Invio fallito: formato 'to' non valido.");
     return res.status(400).json({ error: "Invalid 'to' format" });
   }
 
   try {
     await client.sendMessage(jid, message);
+    console.log("✅ Messaggio WhatsApp inviato.");
     return res.json({ success: true });
   } catch (err) {
     console.error("❌ Errore invio WhatsApp:", err);
@@ -105,14 +119,17 @@ app.post("/send", async (req, res) => {
 // GET /status
 app.get("/status", (req, res) => {
   const connected = !!client.info && clientReady;
+  console.log(`[API] Stato richiesto. Connesso: ${connected}`);
   res.json({
     connected,
     message: connected ? "WhatsApp connesso" : "WhatsApp non connesso",
+    status: connected ? "connected" : "disconnected"
   });
 });
 
 // GET /qr -> returns { qr: 'data:image/png;base64,...' } or 404
 app.get("/qr", (req, res) => {
+  console.log("[API] Richiesta QR code.");
   if (latestQrDataUrl) {
     return res.json({ qr: latestQrDataUrl });
   } else {
