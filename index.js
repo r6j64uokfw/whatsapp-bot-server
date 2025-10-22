@@ -1,24 +1,36 @@
 import express from "express";
 import dotenv from "dotenv";
 import fetch from "node-fetch";
-import { Client, LocalAuth } from "whatsapp-web.js";
+import pkg from "whatsapp-web.js";
+
+const { Client, LocalAuth } = pkg;
 
 dotenv.config();
 const app = express();
 app.use(express.json());
 
-// ✅ Crea il client WhatsApp
+// ✅ Crea il client WhatsApp compatibile con Render
 const client = new Client({
   authStrategy: new LocalAuth({ clientId: "session-whatsapp" }),
-  puppeteer: { headless: true } // senza interfaccia grafica
+  puppeteer: {
+    headless: true,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--no-zygote",
+      "--single-process",
+    ],
+  },
 });
 
-// ✅ Quando il client è pronto
+// ✅ Evento quando WhatsApp è pronto
 client.on("ready", () => {
   console.log("✅ WhatsApp pronto!");
 });
 
-// ✅ Quando arriva un messaggio
+// ✅ Evento per ricezione messaggi
 client.on("message", async (msg) => {
   console.log("📩 Messaggio ricevuto:", msg.body);
 
@@ -38,7 +50,7 @@ client.on("message", async (msg) => {
       }),
     });
   } catch (err) {
-    console.error("Errore invio messaggio a Supabase:", err);
+    console.error("❌ Errore invio messaggio a Supabase:", err);
   }
 });
 
@@ -49,27 +61,21 @@ app.post("/send", async (req, res) => {
     await client.sendMessage(to, message);
     res.json({ success: true });
   } catch (err) {
-    console.error("Errore invio WhatsApp:", err);
+    console.error("❌ Errore invio WhatsApp:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// ✅ Endpoint per mostrare stato o QR
-app.get("/status", async (req, res) => {
-  const state = client.info?.pushname ? "CONNECTED" : "DISCONNECTED";
-  if (state === "DISCONNECTED") {
-    // Genera QR se non connesso
-    client.generateQR().then(qr => {
-      res.json({ connected: false, qr });
-    }).catch(() => {
-      res.json({ connected: false, message: "Impossibile generare QR" });
-    });
-  } else {
-    res.json({ connected: true });
-  }
+// ✅ Endpoint per lo stato
+app.get("/status", (req, res) => {
+  const connected = !!client.info;
+  res.json({
+    connected,
+    message: connected ? "WhatsApp connesso" : "WhatsApp non connesso",
+  });
 });
 
-// ✅ Avvia server
+// ✅ Avvia server HTTP
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Server attivo su porta ${PORT}`));
 
