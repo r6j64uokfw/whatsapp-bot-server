@@ -6,12 +6,17 @@ import QRCode from "qrcode";
 
 const { Client, LocalAuth } = pkg;
 
+// carica variabili da .env
 dotenv.config();
 const app = express();
 app.use(express.json());
 
-console.log("SUPABASE_URL:", process.env.SUPABASE_URL);
-console.log("SUPABASE_SERVICE_ROLE_KEY:", process.env.SUPABASE_SERVICE_ROLE_KEY);
+// fallback: chiavi hardcoded (da usare se .env non contiene valori)
+const SUPABASE_URL = process.env.SUPABASE_URL || "https://aglhxifimuwbzjmhqdac.supabase.co";
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFnbGh4aWZpbXV3YnpqbWhxZGFjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA5OTUxODQsImV4cCI6MjA3NjU3MTE4NH0.I0H0uiap7H1ZH7jlXkhaVowS0yB0LGORqMV5g2bIG_0";
+
+console.log("SUPABASE_URL:", SUPABASE_URL);
+console.log("SUPABASE_SERVICE_ROLE_KEY:", SUPABASE_SERVICE_ROLE_KEY);
 
 // memory holder
 let latestQrDataUrl = null;
@@ -20,11 +25,11 @@ let clientReady = false;
 // Funzione per aggiornare lo stato su Supabase
 async function updateStatusOnSupabase(status) {
   try {
-    await fetch(`${process.env.SUPABASE_URL}/rest/v1/whatsapp_status`, {
+    await fetch(`${SUPABASE_URL}/rest/v1/whatsapp_status`, {
       method: "POST",
       headers: {
-        apikey: process.env.SUPABASE_SERVICE_ROLE_KEY,
-        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
         "Content-Type": "application/json",
         Prefer: "resolution=merge-duplicates"
       },
@@ -84,11 +89,11 @@ client.on("disconnected", (reason) => {
 client.on("message", async (msg) => {
   console.log("📩 Messaggio ricevuto:", msg.body);
   try {
-    const response = await fetch(`${process.env.SUPABASE_URL}/rest/v1/messages`, {
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/messages`, {
       method: "POST",
       headers: {
-        apikey: process.env.SUPABASE_SERVICE_ROLE_KEY,
-        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
