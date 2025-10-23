@@ -11,7 +11,7 @@ const app = express();
 app.use(express.json());
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "https://aglhxifimuwbzjmhqdac.supabase.co";
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "<LA_TUA_SERVICE_ROLE_KEY>";
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "<eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFnbGh4aWZpbXV3YnpqbWhxZGFjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA5OTUxODQsImV4cCI6MjA3NjU3MTE4NH0.I0H0uiap7H1ZH7jlXkhaVowS0yB0LGORqMV5g2bIG_0>";
 
 console.log("SUPABASE_URL:", SUPABASE_URL);
 console.log("SUPABASE_SERVICE_ROLE_KEY:", SUPABASE_SERVICE_ROLE_KEY);
