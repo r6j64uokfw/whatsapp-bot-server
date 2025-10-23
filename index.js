@@ -6,19 +6,16 @@ import QRCode from "qrcode";
 
 const { Client, LocalAuth } = pkg;
 
-// carica variabili da .env
 dotenv.config();
 const app = express();
 app.use(express.json());
 
-// fallback: chiavi hardcoded (da usare se .env non contiene valori)
 const SUPABASE_URL = process.env.SUPABASE_URL || "https://aglhxifimuwbzjmhqdac.supabase.co";
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFnbGh4aWZpbXV3YnpqbWhxZGFjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA5OTUxODQsImV4cCI6MjA3NjU3MTE4NH0.I0H0uiap7H1ZH7jlXkhaVowS0yB0LGORqMV5g2bIG_0";
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "<LA_TUA_SERVICE_ROLE_KEY>";
 
 console.log("SUPABASE_URL:", SUPABASE_URL);
 console.log("SUPABASE_SERVICE_ROLE_KEY:", SUPABASE_SERVICE_ROLE_KEY);
 
-// memory holder
 let latestQrDataUrl = null;
 let clientReady = false;
 
@@ -89,6 +86,18 @@ client.on("disconnected", (reason) => {
 client.on("message", async (msg) => {
   console.log("📩 Messaggio ricevuto:", msg.body);
   try {
+    // Cerca la chat attiva in Supabase (in base al numero mittente)
+    const chatResp = await fetch(`${SUPABASE_URL}/rest/v1/chats?numero=eq.${msg.from}`, {
+      headers: {
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        "Content-Type": "application/json"
+      }
+    });
+    const chats = await chatResp.json();
+    const chat_id = chats[0]?.id || null;
+
+    // Salva il messaggio su Supabase
     const response = await fetch(`${SUPABASE_URL}/rest/v1/messages`, {
       method: "POST",
       headers: {
@@ -97,10 +106,11 @@ client.on("message", async (msg) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        chat_id: msg.from,
+        chat_id,
         sender: "whatsapp",
         message: msg.body,
         status: "received",
+        created_at: new Date().toISOString()
       }),
     });
     console.log("✅ Messaggio inviato a Supabase. Status:", response.status);
@@ -120,8 +130,9 @@ function toJid(raw) {
 
 // POST /send => send to WhatsApp
 app.post("/send", async (req, res) => {
-  const { to, message } = req.body;
-  console.log(`[API] Richiesta invio messaggio: to=${to}, message=${message}`);
+  // Accetta tutti i dati necessari
+  const { to, message, nome, cognome, chat_id } = req.body;
+  console.log(`[API] Richiesta invio messaggio: to=${to}, message=${message}, nome=${nome}, cognome=${cognome}, chat_id=${chat_id}`);
 
   if (!clientReady) {
     console.log("[API] Invio fallito: client non pronto.");
@@ -141,6 +152,27 @@ app.post("/send", async (req, res) => {
   try {
     await client.sendMessage(jid, message);
     console.log("✅ Messaggio WhatsApp inviato.");
+
+    // Salva il messaggio su Supabase con status 'sent'
+    await fetch(`${SUPABASE_URL}/rest/v1/messages`, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        chat_id,
+        sender: "admin",
+        message,
+        status: "sent",
+        nome,
+        cognome,
+        numero: to,
+        created_at: new Date().toISOString()
+      }),
+    });
+
     return res.json({ success: true });
   } catch (err) {
     console.error("❌ Errore invio WhatsApp:", err);
