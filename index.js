@@ -130,30 +130,21 @@ function toJid(raw) {
 
 // POST /send => send to WhatsApp
 app.post("/send", async (req, res) => {
-  // Accetta tutti i dati necessari
   const { to, message, nome, cognome, chat_id } = req.body;
   console.log(`[API] Richiesta invio messaggio: to=${to}, message=${message}, nome=${nome}, cognome=${cognome}, chat_id=${chat_id}`);
 
   if (!clientReady) {
-    console.log("[API] Invio fallito: client non pronto.");
     return res.status(503).json({ error: "WhatsApp client not ready" });
   }
   if (!to || !message) {
-    console.log("[API] Invio fallito: parametri mancanti.");
     return res.status(400).json({ error: "Missing 'to' or 'message'" });
   }
-
   const jid = toJid(to);
   if (!jid) {
-    console.log("[API] Invio fallito: formato 'to' non valido.");
     return res.status(400).json({ error: "Invalid 'to' format" });
   }
-
   try {
     await client.sendMessage(jid, message);
-    console.log("✅ Messaggio WhatsApp inviato.");
-
-    // Salva il messaggio su Supabase con status 'sent'
     await fetch(`${SUPABASE_URL}/rest/v1/messages`, {
       method: "POST",
       headers: {
@@ -172,18 +163,55 @@ app.post("/send", async (req, res) => {
         created_at: new Date().toISOString()
       }),
     });
-
     return res.json({ success: true });
   } catch (err) {
-    console.error("❌ Errore invio WhatsApp:", err);
     return res.status(500).json({ error: err.message || "send failed" });
+  }
+});
+
+// GET /chats => restituisce solo le chat attive (senza messaggi)
+app.get("/chats", async (req, res) => {
+  try {
+    const resp = await fetch(`${SUPABASE_URL}/rest/v1/chats?select=id,nome,cognome,numero,created_at,status`, {
+      headers: {
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        "Content-Type": "application/json"
+      }
+    });
+    const chats = await resp.json();
+    // Filtra solo le chat attive (status === 'active')
+    const activeChats = chats.filter(chat => chat.status === "active");
+    res.json(activeChats);
+  } catch (err) {
+    res.status(500).json({ error: err.message || "Errore recupero chat" });
+  }
+});
+
+// GET /messages?chat_id=... => restituisce solo i messaggi della chat selezionata
+app.get("/messages", async (req, res) => {
+  const { chat_id } = req.query;
+  if (!chat_id) {
+    return res.status(400).json({ error: "chat_id richiesto" });
+  }
+  try {
+    const resp = await fetch(`${SUPABASE_URL}/rest/v1/messages?chat_id=eq.${chat_id}&order=created_at.asc`, {
+      headers: {
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        "Content-Type": "application/json"
+      }
+    });
+    const messages = await resp.json();
+    res.json(messages);
+  } catch (err) {
+    res.status(500).json({ error: err.message || "Errore recupero messaggi" });
   }
 });
 
 // GET /status
 app.get("/status", (req, res) => {
   const connected = !!client.info && clientReady;
-  console.log(`[API] Stato richiesto. Connesso: ${connected}`);
   res.json({
     connected,
     message: connected ? "WhatsApp connesso" : "WhatsApp non connesso",
@@ -193,7 +221,6 @@ app.get("/status", (req, res) => {
 
 // GET /qr -> returns { qr: 'data:image/png;base64,...' } or 404
 app.get("/qr", (req, res) => {
-  console.log("[API] Richiesta QR code.");
   if (latestQrDataUrl) {
     return res.json({ qr: latestQrDataUrl });
   } else {
